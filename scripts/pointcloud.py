@@ -38,13 +38,28 @@ class VtkPointCloud:
         self.vtkPolyData.SetVerts(self.vtkCells)
         self.vtkPolyData.GetPointData().SetScalars(self.vtkDepth)
         self.vtkPolyData.GetPointData().SetActiveScalars('DepthArray')
+class AddPointCloudTimerCallback():
+    def __init__(self, renderer, pointcloud):
+        # self.iterations = iterations
+        self.renderer = renderer
+        self.pointcloud= pointcloud
 
-#
-pointCloud = VtkPointCloud()
+    def execute(self, iren, event):
+        # if self.iterations == 0:
+        #     iren.DestroyTimer(self.timerId)
+        
+        
+        self.pointcloud.clearPoints()
+        iren.GetRenderWindow().Render()
+        # if self.iterations == 30:
+        #     self.renderer.ResetCamera()
+
+#         self.iterations -= 1
+# #
+
 pipeline = rs.pipeline()
 pipeline.start()
 renderer = vtk.vtkRenderer()
-renderer.AddActor(pointCloud.vtkActor)
 renderer.SetBackground(.2, .3, .4)
 renderer.ResetCamera()
 
@@ -52,28 +67,42 @@ renderer.ResetCamera()
 renderWindow = vtk.vtkRenderWindow()
 renderWindow.AddRenderer(renderer)
 
+pointCloud = VtkPointCloud()
+renderer.AddActor(pointCloud.vtkActor)
+        
 # Interactor
 renderWindowInteractor = vtk.vtkRenderWindowInteractor()
 renderWindowInteractor.SetRenderWindow(renderWindow)
+renderWindowInteractor.Initialize()
+#addPointCloudTimerCallback = AddPointCloudTimerCallback(renderer)
+# renderWindowInteractor.AddObserver('TimerEvent', addPointCloudTimerCallback.execute)
+#timerId = renderWindowInteractor.CreateRepeatingTimer(10)
+#addPointCloudTimerCallback.timerId = timerId
+renderWindow.Render()
 
+renderWindowInteractor.Start()
 
 while True:
     # Create a pipeline object. This object configures the streaming camera and owns it's handle
     frames = pipeline.wait_for_frames()
     depth = frames.get_depth_frame()
-    
+   
 
     if not depth: continue
 
     # Print a simple text-based representation of the image, by breaking it into 10x20 pixel regions and approximating the coverage of pixels within one meter
-    coverage = [0]*64
+    
     for y in range(480):
         for x in range(640):
             dist = depth.get_distance(x, y)
+           # print("point:",[x,y,dist])
             pointCloud.addPoint([x,y,dist])
-    renderWindow.Render()
-    renderWindowInteractor.Initialize()
-    renderWindowInteractor.Start()
+    addPointCloudTimerCallback = AddPointCloudTimerCallback(renderer,pointCloud)
+
+    renderWindowInteractor.AddObserver('TimerEvent', addPointCloudTimerCallback.execute)
+    timerId = renderWindowInteractor.CreateRepeatingTimer(10)
+    #addPointCloudTimerCallback.timerId = timerId
+
 
     
 
