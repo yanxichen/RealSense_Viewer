@@ -76,15 +76,5 @@ while True:
     renderWindowInteractor.Start()
 
     
-#for k in range(1000):
-#    point = 20*(np.random.rand(3)-0.5)
-#    print('point: ',point)
-#    pointCloud.addPoint(point)
-#pointCloud.addPoint([0,0,0])
-#pointCloud.addPoint([0,0,0])
-#pointCloud.addPoint([0,0,0])
-#pointCloud.addPoint([0,0,0])
 
-
-# Begin Interaction
 
