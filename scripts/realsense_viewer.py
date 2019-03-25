@@ -7,15 +7,17 @@ import time
 
 
 class VtkPointCloud:
-    def __init__(self, zMin=0.0, zMax=255.0, maxNumPoints=1e10):
+    def __init__(self, color=False, zMin=0.0, zMax=255.0, maxNumPoints=1e10):
         self.maxNumPoints = maxNumPoints
         self.vtkPolyData = vtk.vtkPolyData()
-        self.clearPoints()
+        self.color = color
         mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputData(self.vtkPolyData)
-        mapper.SetColorModeToDefault()
-        mapper.SetScalarRange(zMin, zMax)
+        if self.color is False:
+            mapper.SetColorModeToDefault()
+            mapper.SetScalarRange(zMin, zMax)
         mapper.SetScalarVisibility(1)
+        mapper.SetInputData(self.vtkPolyData)
+        self.clearPoints()
         self.vtkActor = vtk.vtkActor()
         self.vtkActor.SetMapper(mapper)
         self.numPoints = 0  # For debugging
@@ -38,8 +40,15 @@ class VtkPointCloud:
         self.vtkDepth.SetName('DepthArray')
         self.vtkPolyData.SetPoints(self.vtkPoints)
         self.vtkPolyData.SetVerts(self.vtkCells)
-        self.vtkPolyData.GetPointData().SetScalars(self.vtkDepth)
-        self.vtkPolyData.GetPointData().SetActiveScalars('DepthArray')
+        if self.color is False:
+            self.vtkPolyData.GetPointData().SetScalars(self.vtkDepth)
+            self.vtkPolyData.GetPointData().SetActiveScalars('DepthArray')
+        else:
+            self.Colors = vtk.vtkUnsignedCharArray()
+            self.Colors.SetNumberOfComponents(3)
+            self.Colors.SetName("Colors")
+            self.vtkPolyData.GetPointData().SetScalars(self.Colors)
+            self.vtkPolyData.GetPointData().SetActiveScalars('Colors')
         # self.numPoints = 0
 
     def update_pointcloud(self, threadLock, update_on):
@@ -48,15 +57,20 @@ class VtkPointCloud:
             threadLock.acquire()
             self.clearPoints()
             frames = pipeline.wait_for_frames()
-            depth = frames.get_depth_frame()
-            if not depth:
-                pass
+            depth_frame = frames.get_depth_frame()
+            color_frame = frames.get_color_frame()
+            color_data = np.asanyarray(color_frame.get_data())
+            if not depth_frame or not color_frame:
+                continue
             for y in range(480):
                 for x in range(640):
                     if x % 3 or y % 3:
                         continue
-                    dist = depth.get_distance(x, y) * 50
+                    dist = depth_frame.get_distance(x, y) * 50
                     self.addPoint([x, y, dist])
+                    if self.color:
+                        rgb = color_data[y, x]
+                        self.Colors.InsertNextTuple3(rgb[0], rgb[1], rgb[2])
             threadLock.release()
             # print(self.numPoints)
 
@@ -105,7 +119,7 @@ update_on = threading.Event()
 update_on.set()
 threadLock = threading.Lock()
 
-pointCloud = VtkPointCloud()
+pointCloud = VtkPointCloud(color=True)  # Default to heatmap when color=False
 pointCloud.update(threadLock, update_on)
 
 visual = Visualization(threadLock, pointCloud, 30)
