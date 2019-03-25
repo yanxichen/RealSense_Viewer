@@ -84,8 +84,8 @@ class VtkPointCloud:
                 for x in range(640):
                     if x % 3 or y % 3:
                         continue
-                    dist = depth_frame.get_distance(x, y) * 50
-                    self.addPoint([x, y, dist])
+                    dist = min(1, depth_frame.get_distance(x, y))
+                    self.addPoint([x, y, dist * dist * dist * 500])
                     if self.mode in {1, 2}:  # RGB
                         rgb = color_data[y, x]
                         self.Colors.InsertNextTuple3(rgb[0], rgb[1], rgb[2])
@@ -146,7 +146,7 @@ class Visualization:
         self.threadLock.release()
 
 
-def run(mode=0):
+def run(mode=0):  # Default mode is Stereo
     update_on = threading.Event()
     update_on.set()
     threadLock = threading.Lock()
@@ -160,4 +160,4 @@ def run(mode=0):
 
 pipeline = rs.pipeline()
 pipeline.start()
-run()
+run(1)
