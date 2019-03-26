@@ -9,17 +9,21 @@ import time
 class VtkPointCloud:
     def __init__(self, mode=0, zMin=0.0, zMax=255.0, maxNumPoints=1e10):
         """
+        Uses vtkPolyData objects to represent point cloud in VTK.
         :param mode: 0 - Stereo Mode
                      1 - RGB Mode
                      2 - Both
         """
         self.mode = mode
         self.maxNumPoints = maxNumPoints
+
+        # Two vtkPolyData objects and mappers are created for the handling of stereo and rgb mode, respectively
         self.stereo_vtkPolyData = vtk.vtkPolyData()
         self.rgb_vtkPolyData = vtk.vtkPolyData()
         stereo_mapper = vtk.vtkPolyDataMapper()
         rgb_mapper = vtk.vtkPolyDataMapper()
 
+        # Set mappers to their respective polydata objects
         if self.mode not in {0, 1, 2}:
             raise ValueError('Invalid Mode. Choose from 0 (Stereo Mode), 1 (RGB Mode), 2 (Both)')
         if self.mode in {0, 2}:  # Stereo
@@ -39,10 +43,17 @@ class VtkPointCloud:
         self.clearPoints()
 
     def addPoint(self, point):
+        """
+        Add a point detected by the camera to the point cloud object.
+        :param point: a one-dimensional array that contains the X-Y coordinates and depth of a point detected by the
+                    camera.
+        """
         pointId = self.vtkPoints.InsertNextPoint([640 - point[0], 480 - point[1], 0 - point[2]])
         self.vtkDepth.InsertNextValue(point[2])
         self.vtkCells.InsertNextCell(1)
         self.vtkCells.InsertCellPoint(pointId)
+
+        # Update the pipeline when a new point is added
         self.vtkCells.Modified()
         self.vtkPoints.Modified()
         self.vtkDepth.Modified()
@@ -50,6 +61,10 @@ class VtkPointCloud:
         self.rgb_vtkPolyData.Modified()
 
     def clearPoints(self):
+        """
+        Resets the polydata object. When called at class instantiation, initializes points, verts, and DepthArray for
+        the polydata object.
+        """
         self.vtkPoints = vtk.vtkPoints()
         self.vtkCells = vtk.vtkCellArray()
         self.vtkDepth = vtk.vtkDoubleArray()
@@ -60,6 +75,7 @@ class VtkPointCloud:
         self.rgb_vtkPolyData.SetVerts(self.vtkCells)
 
         if self.mode in {1, 2}:  # RGB
+            # Adding RGB information to the polydata object as Scalars
             self.Colors = vtk.vtkUnsignedCharArray()
             self.Colors.SetNumberOfComponents(3)
             self.Colors.SetName("Colors")
@@ -70,6 +86,12 @@ class VtkPointCloud:
             self.stereo_vtkPolyData.GetPointData().SetActiveScalars('DepthArray')
 
     def update_pointcloud(self, threadLock, update_on):
+        """
+        Grabs frames from the pyrealsense pipeline and add each point to the point cloud.
+        :param threadLock: A lock for multithreading purposes
+        :param update_on: A flag for the Event object in the threading module. Method will continuously grab frames and
+                          add points to the point cloud while the flag has not been cleared
+        """
         while update_on.is_set():
             time.sleep(0.01)
             threadLock.acquire()
@@ -80,6 +102,7 @@ class VtkPointCloud:
             color_data = np.asanyarray(color_frame.get_data())
             if not depth_frame or not color_frame:
                 continue
+            # Iterating through all points inside the frame
             for y in range(480):
                 for x in range(640):
                     if x % 3 or y % 3:
@@ -91,13 +114,18 @@ class VtkPointCloud:
                         self.Colors.InsertNextTuple3(rgb[0], rgb[1], rgb[2])
             threadLock.release()
 
-    def update(self, threadLock, update_on):
+    def update(self, threadLock, update_on):  # Start thread
         thread = threading.Thread(target=self.update_pointcloud, args=(threadLock, update_on))
         thread.start()
 
 
 class Visualization:
-    def __init__(self, threadLock, pointCloud, iterations):
+    def __init__(self, threadLock, pointCloud, iterations=30):
+        """
+        Handles the rendering of the point cloud object in VTK.
+        :param threadLock: A lock for multithreading purposes
+        :param pointCloud: An instance of the VtkPointCloud class
+        """
         self.threadLock = threadLock
         self.iterations = iterations
         self.pointCloud = pointCloud
@@ -105,6 +133,7 @@ class Visualization:
         self.renderWindow = vtk.vtkRenderWindow()
         self.renderWindow.SetSize(1000, 800)
 
+        # Creates rendering pipeline
         if self.mode in {0, 2}:  # Stereo
             self.stereo_renderer = vtk.vtkRenderer()
             self.stereo_renderer.SetBackground(.2, .3, .4)
@@ -148,14 +177,15 @@ class Visualization:
 
 def run(mode=0):  # Default mode is Stereo
     update_on = threading.Event()
-    update_on.set()
-    threadLock = threading.Lock()
+    update_on.set()  # Set the event flag to true to start continuous update later on
+    threadLock = threading.Lock()  # Acquire a lock for the thread
 
     pointCloud = VtkPointCloud(mode)
-    pointCloud.update(threadLock, update_on)
+    pointCloud.update(threadLock, update_on)  # Start the thread for continuous update of the point cloud object
 
-    visual = Visualization(threadLock, pointCloud, 30)
+    visual = Visualization(threadLock, pointCloud, 30)  # Start the thread for rendering of the point cloud object
     visual.renderWindowInteractor.Start()
+    update_on.clear()
 
 
 pipeline = rs.pipeline()
