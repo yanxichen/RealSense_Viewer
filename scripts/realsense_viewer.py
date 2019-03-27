@@ -152,13 +152,29 @@ class Visualization:
             self.stereo_renderer.SetViewport(0, 0, 0.5, 1)
             self.rgb_renderer.SetViewport(0.5, 0, 1, 1)
 
+            # Synchronize cameras
+            camera = self.stereo_renderer.GetActiveCamera()
+            self.rgb_renderer.SetActiveCamera(camera)
+
         # Interactor
         self.renderWindowInteractor = vtk.vtkRenderWindowInteractor()
         self.renderWindowInteractor.SetRenderWindow(self.renderWindow)
         self.renderWindowInteractor.Initialize()
 
+        # Add Axes
+        axes = vtk.vtkAxesActor()
+        axes.SetTotalLength(50, 50, 50)
+        widget = vtk.vtkOrientationMarkerWidget()
+        widget.SetOutlineColor(0.9300, 0.5700, 0.1300)
+        widget.SetOrientationMarker(axes)
+        widget.SetInteractor(self.renderWindowInteractor)
+        widget.SetViewport(0.0, 0.0, 0.2, 0.2)
+        widget.SetEnabled(1)
+        widget.InteractiveOn()
+        
         self.renderWindowInteractor.AddObserver('TimerEvent', self.update_visualization)
         timerId = self.renderWindowInteractor.CreateRepeatingTimer(30)
+        self.renderWindowInteractor.Start()
 
     def update_visualization(self, obj=None, event=None):
         time.sleep(0.01)
@@ -190,4 +206,4 @@ def run(mode=0):  # Default mode is Stereo
 
 pipeline = rs.pipeline()
 pipeline.start()
-run(1)
+run(2)
