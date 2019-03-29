@@ -4,13 +4,19 @@ from numpy import random
 import pyrealsense2 as rs
 import time
 
-IMG_H = 480
-IMG_W = 640
-MAX_DIST = 5000.0
-DIST_NORMALIZE = 1000.0
+IMG_H = 480     # Image height
+IMG_W = 640     # Image width
+MAX_DIST = 5000.0   # Max cut-off distance
+DIST_NORMALIZE = 1000.0 # Normalize distance to this range
 
 class RealsenseViewer:
     def __init__(self, mode):
+        """
+        Mode: contains the following mode toggles
+            depth: Turn on depth image with default color map
+            color: Turn on 2D rgb image
+            register: Turn on registered depth image (depth image with rgb)
+        """
         self.mode = mode
         self.mode_depth = False
         self.mode_color = False
@@ -21,7 +27,6 @@ class RealsenseViewer:
             self.mode_color = True
         if 'register' in self.mode:
             self.mode_register = True
-
         if not (self.mode_depth or self.mode_color or self.mode_register):
             raise ValueError(
                 'Mode must contain at least one of \'color\', \'depth\' \
@@ -35,6 +40,7 @@ class RealsenseViewer:
         self.pipeline = rs.pipeline()
         self.rs_config = rs.config()
         if self.mode_depth or self.mode_register:
+            # Turn on depth image channel on Realsense camera
             self.rs_config.enable_stream(
                 rs.stream.depth,
                 IMG_W,
@@ -43,6 +49,7 @@ class RealsenseViewer:
                 30
             )
         if self.mode_color or self.mode_register:
+            # Turn on RGB channel on Realsense camera
             self.rs_config.enable_stream(
                 rs.stream.color,
                 IMG_W,
@@ -53,6 +60,9 @@ class RealsenseViewer:
         self.pipeline.start(self.rs_config)
 
     def init_vtk(self):
+        """
+        Initialize all VTK related settings
+        """
         self.renderWindow = vtk.vtkRenderWindow()
         numOfViewPorts = self.mode_color + self.mode_register + self.mode_depth
         if numOfViewPorts == 2:
@@ -60,17 +70,14 @@ class RealsenseViewer:
         else:
             self.renderWindow.SetSize(1000, 1000)
 
+        # Initialize Pointclouds containers for depth and register modes
         if self.mode_depth or self.mode_register:
             self.vtkPoints = vtk.vtkPoints()
             self.vtkCells = vtk.vtkCellArray()
             self.vtkDepth = vtk.vtkDoubleArray()
             self.vtkDepth.SetName('DepthArray')
 
-        # if self.mode_color or self.mode_register:
-            # self.vtk_ColorData = vtk.vtkUnsignedCharArray()
-            # self.vtk_ColorData.SetNumberOfComponents(3)
-            # self.vtk_ColorData.SetName('Colors')
-
+        # Initialize all rendered views
         if self.mode_color:
             self.init_vtk_2DImage()
         if self.mode_depth:
@@ -78,18 +85,24 @@ class RealsenseViewer:
         if self.mode_register:
             self.init_vtk_ColorPointCloud()
 
+        # Initialize Pointcloud data containers
         self.clearPoints()
 
+        # Defines the layout of all rendered views
         if numOfViewPorts == 3:
-            self.image_renderer.SetViewport(0, 0, 0.5, 0.5)
+            self.pc_renderer.SetViewport(0, 0, 0.5, 0.5)
             self.rgb_renderer.SetViewport(0.5, 0, 1, 0.5)
-            self.pc_renderer.SetViewport(0, 0.5, 0.5, 1)
+            self.image_renderer.SetViewport(0, 0.5, 0.5, 1)
+
+            # Camera synchronization
             camera = self.rgb_renderer.GetActiveCamera()
             self.pc_renderer.SetActiveCamera(camera)
         elif numOfViewPorts == 2:
             if not self.mode_color:
                 self.rgb_renderer.SetViewport(0, 0, 0.5, 1)
                 self.pc_renderer.SetViewport(0.5, 0, 1, 1)
+
+                # Camera synchronization
                 camera = self.rgb_renderer.GetActiveCamera()
                 self.pc_renderer.SetActiveCamera(camera)
             elif not self.mode_register:
@@ -103,50 +116,37 @@ class RealsenseViewer:
         self.renderWindowInteractor.SetRenderWindow(self.renderWindow)
         self.renderWindowInteractor.Initialize()
 
-        # if self.mode_color:
-            # self.renderWindowInteractor.SetInteractorStyle(
-                # vtk.vtkInteractorStyleImage()
-            # )
+        # This will disable rotation for all rendered views
+        # self.renderWindowInteractor.SetInteractorStyle(
+            # vtk.vtkInteractorStyleImage()
+        # )
 
-        self.init_axes()
+        # self.init_axes() # this is not working :(
 
-        self.camera_reset = False
-        timerId = self.renderWindowInteractor.CreateRepeatingTimer(10)
+        self.camera_reset = False # this will control re-setting all cameras
+                                  # during the first iteration
+
+        # Create callback function for updating
+        timerId = self.renderWindowInteractor.CreateRepeatingTimer(10) # 10ms
         self.renderWindowInteractor.AddObserver('TimerEvent',
             self.update
         )
 
-        # if self.mode_color:
-            # self.image_renderer.ResetCamera()
-        # if self.mode_register:
-            # self.rgb_renderer.ResetCamera()
-        # if self.mode_depth:
-            # self.pc_renderer.ResetCamera()
-
+        # Program start
         self.renderWindowInteractor.Start()
 
-    # def init_vtk_2DImage(self):
-        # self.image_vtkImageData = vtk.vtkImageData()
-        # self.image_vtkImageData.SetDimensions(IMG_H, IMG_W, 1)
-        # self.image_vtkImageData.AllocateScalars(vtk.VTK_DOUBLE, 3)
-
-        # self.image_actor = vtk.vtkImageActor()
-        # self.image_actor.SetInputData(self.image_vtkImageData)
-        # self.image_actor.SetOrientation(0, 0, -90)
-
-        # self.image_renderer = vtk.vtkRenderer()
-        # self.image_renderer.SetBackground(.2, .3, .4)
-        # self.image_renderer.AddActor2D(self.image_actor)
-        # self.image_renderer.ResetCamera()
-
-        # self.renderWindow.AddRenderer(self.image_renderer)
-
     def init_vtk_2DImage(self):
+        """
+        Viewport Initialization: 2D Image Mode
+        """
+        # These are the static pointcloud containers for the 2D image, all
+        # depth is set to a constant value 0 to display a flat image plane
         self.vtk_static_points = vtk.vtkPoints()
         self.vtk_static_cells = vtk.vtkCellArray()
         self.vtk_static_depth = vtk.vtkDoubleArray()
         self.vtk_static_depth.SetName('DepthArray')
 
+        # Setting all values to 0
         for i in range(IMG_H):
             for j in range(IMG_W):
                 if i % 3 or j % 3:
@@ -177,11 +177,10 @@ class RealsenseViewer:
         self.renderWindow.AddRenderer(self.image_renderer)
 
     def init_vtk_PointCloud(self):
+        """
+        Viewport Initialization: Depth Mode
+        """
         self.vtk_plData = vtk.vtkPolyData()
-        # self.vtk_plData.SetPoints(self.vtkPoints)
-        # self.vtk_plData.SetVerts(self.vtkCells)
-        # self.vtk_plData.GetPointData().SetScalars(self.vtkDepth)
-        # self.vtk_plData.GetPointData().SetActiveScalars('DepthArray')
 
         pc_mapper = vtk.vtkPolyDataMapper()
         pc_mapper.SetColorModeToDefault()
@@ -199,17 +198,10 @@ class RealsenseViewer:
         self.renderWindow.AddRenderer(self.pc_renderer)
 
     def init_vtk_ColorPointCloud(self):
-        # self.vtk_ColorData = vtk.vtkUnsignedCharArray()
-        # self.vtk_ColorData.SetNumberOfComponents(3)
-        # self.vtk_ColorData.SetName('Colors')
-
+        """
+        Viewport Initialization: Registered Depth Image Mode
+        """
         self.rgb_vtkPolyData = vtk.vtkPolyData()
-        # self.rgb_vtkPolyData.SetPoints(self.vtkPoints)
-        # self.rgb_vtkPolyData.SetVerts(self.vtkCells)
-        # self.rgb_vtkPolyData.GetPointData().SetScalars(
-            # self.vtk_ColorData
-        # )
-        # self.rgb_vtkPolyData.GetPointData().SetActiveScalars('Colors')
 
         rgb_mapper = vtk.vtkPolyDataMapper()
         rgb_mapper.SetScalarVisibility(1)
@@ -226,34 +218,47 @@ class RealsenseViewer:
         self.renderWindow.AddRenderer(self.rgb_renderer)
 
     def init_axes(self):
+        """
+        Initialize a small axes widget
+        """
         axes = vtk.vtkAxesActor()
         axes.SetTotalLength(50, 50, 50)
         widget = vtk.vtkOrientationMarkerWidget()
         widget.SetOutlineColor(0.9300, 0.5700, 0.1300)
         widget.SetOrientationMarker(axes)
         widget.SetInteractor(self.renderWindowInteractor)
+        widget.SetInteractor(self.renderWindowInteractor)
         widget.SetViewport(0.0, 0.0, 0.2, 0.2)
         widget.SetEnabled(1)
-        widget.InteractiveOn()
+        # widget.InteractiveOn() # disable interaction for axes widget
 
     def clearPoints(self):
+        """
+        Clear all containers to allow update new data, this function needs to
+        be called during the initialization of the program and everytime you
+        want to update a new frame.
+        """
+        # Clear Pointcloud containers for registered mode and depth mode
         if self.mode_register or self.mode_depth:
             self.vtkPoints = vtk.vtkPoints()
             self.vtkCells = vtk.vtkCellArray()
             self.vtkDepth = vtk.vtkDoubleArray()
             self.vtkDepth.SetName('DepthArray')
 
+        # Clear the pointcloud data container for depth mode
         if self.mode_depth:
             self.vtk_plData.SetPoints(self.vtkPoints)
             self.vtk_plData.SetVerts(self.vtkCells)
             self.vtk_plData.GetPointData().SetScalars(self.vtkDepth)
             self.vtk_plData.GetPointData().SetActiveScalars('DepthArray')
 
+        # Clear color container for registered and 2d image mode
         if self.mode_register or self.mode_color:
             self.vtk_ColorData = vtk.vtkUnsignedCharArray()
             self.vtk_ColorData.SetNumberOfComponents(3)
             self.vtk_ColorData.SetName('Colors')
 
+        # Clear the pointcloud data container for registered mode
         if self.mode_register:
             self.rgb_vtkPolyData.SetPoints(self.vtkPoints)
             self.rgb_vtkPolyData.SetVerts(self.vtkCells)
@@ -262,6 +267,7 @@ class RealsenseViewer:
             )
             self.rgb_vtkPolyData.GetPointData().SetActiveScalars('Colors')
 
+        # Clear the color container for 2d image mode
         if self.mode_color:
             self.vtk_imData.SetPoints(self.vtk_static_points)
             self.vtk_imData.SetVerts(self.vtk_static_cells)
@@ -271,6 +277,9 @@ class RealsenseViewer:
             self.vtk_imData.GetPointData().SetActiveScalars('Colors')
 
     def addDepthPoint(self, point):
+        """
+        Add one depth pixel to the pointcloud data containers
+        """
         pointId = self.vtkPoints.InsertNextPoint(
             [640 - point[1], 480 - point[0], 0 - point[2]]
             # [point[0], point[1], point[2]]
@@ -284,26 +293,25 @@ class RealsenseViewer:
         self.vtkDepth.Modified()
 
     def addColorPoint(self, point):
-        i = point[0]
-        j = point[1]
+        """
+        Add one rgb pixel to the color data containers (note that here the
+        data is in BGR format)
+        """
+        # i = point[0]
+        # j = point[1]
         bgr = point[2]
-        # if self.mode_color:
-            # self.image_vtkImageData.SetScalarComponentFromDouble(
-                # i, j, 0, 0, bgr[2]
-            # )
-            # self.image_vtkImageData.SetScalarComponentFromDouble(
-                # i, j, 0, 1, bgr[1]
-            # )
-            # self.image_vtkImageData.SetScalarComponentFromDouble(
-                # i, j, 0, 2, bgr[0]
-            # )
         if self.mode_register or self.mode_color:
             self.vtk_ColorData.InsertNextTuple3(bgr[2], bgr[1], bgr[0])
 
     def update(self, obj=None, event=None):
+        """
+        The main update function, will be called every 10ms (approximately)
+        from the renderWindowInteractor
+        """
         frame = self.pipeline.wait_for_frames()
         self.clearPoints()
 
+        # Get a RGB color frame
         if self.mode_color or self.mode_register:
             color_frame = frame.get_color_frame()
             if not color_frame:
@@ -311,6 +319,7 @@ class RealsenseViewer:
                 return
             color_data = np.asanyarray(color_frame.get_data())
 
+        # Get a Depth frame
         if self.mode_depth or self.mode_register:
             depth_frame = frame.get_depth_frame()
             if not depth_frame:
@@ -318,6 +327,7 @@ class RealsenseViewer:
                 return
             depth_image = np.asanyarray(depth_frame.get_data())
 
+        # Update every pixel for all data containers
         for i in range(IMG_H):
             for j in range(IMG_W):
                 if i % 3 or j % 3:
@@ -327,24 +337,30 @@ class RealsenseViewer:
                     self.addColorPoint([i, j, bgr])
 
                 if self.mode_depth or self.mode_register:
+                    # Cut-off the value into the range of [0, MAX_DIST], and
+                    # then normalize to [0, DIST_NORMALIZE]
                     dist = min(MAX_DIST, depth_image[i, j]) / MAX_DIST * \
                             DIST_NORMALIZE
-                    # self.addDepthPoint([i, j, dist * dist * dist * 500])
                     self.addDepthPoint([i, j, dist])
 
+        # Indicate the corresponding data container are updated, but I don't
+        # know if this will have any effect
+        if self.mode_depth:
+            self.vtk_plData.Modified()
+        if self.mode_register:
+            self.rgb_vtkPolyData.Modified()
+        if self.mode_color:
+            self.vtk_imData.Modified()
+
+        # Refresh the camera in the first frame, otherwise you won't able to
+        # interact with the cameras
         if not self.camera_reset:
             self.camera_reset = True
             if self.mode_depth:
-                self.vtk_plData.Modified()
                 self.pc_renderer.ResetCamera()
-
             if self.mode_register:
-                self.rgb_vtkPolyData.Modified()
                 self.rgb_renderer.ResetCamera()
-
             if self.mode_color:
-                # self.image_vtkImageData.Modified()
-                self.vtk_imData.Modified()
                 self.image_renderer.ResetCamera()
 
         # self.renderWindow.Render()
@@ -352,3 +368,4 @@ class RealsenseViewer:
 
 viewer = RealsenseViewer({'color', 'depth', 'register'})
 # viewer = RealsenseViewer({'depth', 'register'})
+# viewer = RealsenseViewer({'depth'})
