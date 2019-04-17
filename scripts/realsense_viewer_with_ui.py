@@ -14,10 +14,11 @@ from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from time import gmtime, strftime
 from ui_layout import Ui_MainWindow
 
-IMG_H = 480     # Image height
-IMG_W = 640     # Image width
-MAX_DIST = 5000.0   # Max cut-off distance
-DIST_NORMALIZE = 1000.0 # Normalize distance to this range
+IMG_H = 480  # Image height
+IMG_W = 640  # Image width
+MAX_DIST = 5000.0  # Max cut-off distance
+DIST_NORMALIZE = 1000.0  # Normalize distance to this range
+
 
 class RealsenseViewer:
     def __init__(self, mode):
@@ -27,14 +28,11 @@ class RealsenseViewer:
             color: Turn on 2D rgb image
             register: Turn on registered depth image (depth image with rgb)
         """
-        #QtGui.QMainWindow.__init__(self,parent)
         app = QtWidgets.QApplication(sys.argv)
         MainWindow = QtWidgets.QMainWindow()
-       # MainWindow = QtWidgets.QMainWindow()
-        self.ui=Ui_MainWindow()
+        self.ui = Ui_MainWindow()
         self.ui.setupUi(MainWindow)
         self.ui.vtkWidget = QVTKRenderWindowInteractor(self.ui.widget)
-      #  self.ui.vtkWidget.SetSize(500,300)
         self.mode = mode
         self.mode_depth = False
         self.mode_color = False
@@ -53,20 +51,21 @@ class RealsenseViewer:
 
         self.init_realsense()
         self.init_vtk()
-       
+
+        # Connect UI element
         self.ui.Snapshot.clicked.connect(lambda: self.snapshot(self.renderWindow))
-        self.ui.Roll.clicked.connect(lambda:self.roll(self.rgb_renderer,self.renderWindow))
-        self.ui.Azimuth.clicked.connect(lambda:self.azimuth(self.rgb_renderer,self.renderWindow))
-        self.ui.Pitch.clicked.connect(lambda:self.pitch(self.rgb_renderer,self.renderWindow))
-        self.ui.reset.clicked.connect(lambda:self.reset(self.rgb_renderer,self.renderWindow,self.rgb_vtkActor))
-        #self.ui.reset.clicked.connect(lambda:self.reset(self.pc_renderer,self.renderWindow,self.pc_vtkActor))
-       # MainWindow.show()
-       
+        self.ui.Roll.clicked.connect(lambda: self.roll(self.rgb_renderer, self.renderWindow))
+        self.ui.Azimuth.clicked.connect(lambda: self.azimuth(self.rgb_renderer, self.renderWindow))
+        self.ui.Pitch.clicked.connect(lambda: self.pitch(self.rgb_renderer, self.renderWindow))
+        self.ui.reset.clicked.connect(lambda: self.reset(self.rgb_renderer, self.renderWindow, self.rgb_vtkActor))
+
         MainWindow.show()
         sys.exit(app.exec_())
 
-
     def init_realsense(self):
+        """
+        Initialize realsense related settings
+        """
         self.pipeline = rs.pipeline()
         self.rs_config = rs.config()
         if self.mode_depth or self.mode_register:
@@ -94,13 +93,9 @@ class RealsenseViewer:
         Initialize all VTK related settings
         """
         self.renderWindow = self.ui.vtkWidget.GetRenderWindow()
-        self.renderWindow.SetSize(600,500)
+        self.renderWindow.SetSize(600, 500)
         numOfViewPorts = self.mode_color + self.mode_register + self.mode_depth
-        #if numOfViewPorts == 2:
-        #    self.renderWindow.SetSize(1000, 500)
-        #else:
-        #    self.renderWindow.SetSize(1000, 1000)
-        #self.renderWindow.SetSize(200,200)
+
         # Initialize Pointclouds containers for depth and register modes
         if self.mode_depth or self.mode_register:
             self.vtkPoints = vtk.vtkPoints()
@@ -121,16 +116,16 @@ class RealsenseViewer:
 
         # Defines the layout of all rendered views
         if numOfViewPorts == 3:
-            self.pc_renderer.SetViewport(0, 0, 0.5, 2/3)
-            self.rgb_renderer.SetViewport(0.5, 0, 1, 2/3)
-            self.image_renderer.SetViewport(0, 2/3, 1, 1)
+            self.pc_renderer.SetViewport(0, 0, 0.5, 2 / 3)
+            self.rgb_renderer.SetViewport(0.5, 0, 1, 2 / 3)
+            self.image_renderer.SetViewport(0, 2 / 3, 1, 1)
 
             # Camera synchronization
             camera = self.rgb_renderer.GetActiveCamera()
-            #camera.Zoom(2)
+            # camera.Zoom(2)
             self.pc_renderer.SetActiveCamera(camera)
 
-            #self.image_renderer.SetActiveCamera(camera)
+            # self.image_renderer.SetActiveCamera(camera)
         elif numOfViewPorts == 2:
             if not self.mode_color:
                 self.rgb_renderer.SetViewport(0, 0, 0.5, 1)
@@ -146,28 +141,16 @@ class RealsenseViewer:
                 self.rgb_renderer.SetViewport(0, 0, 0.5, 1)
                 self.image_renderer.SetViewport(0.5, 0, 1, 1)
 
-        #self.renderWindowInteractor = vtk.vtkRenderWindowInteractor()
-        #self.renderWindowInteractor.SetRenderWindow(self.renderWindow)
-        self.iren=self.ui.vtkWidget.GetRenderWindow().GetInteractor()
-        #self.iren.UpdateSize(500,400)
+        self.iren = self.ui.vtkWidget.GetRenderWindow().GetInteractor()
         self.iren.Initialize()
-        #print( self.iren)
-
-        # This will disable rotation for all rendered views
-        # self.renderWindowInteractor.SetInteractorStyle(
-            # vtk.vtkInteractorStyleImage()
-        # )
-
-        # self.init_axes() # this is not working :(
-
-        self.camera_reset = False # this will control re-setting all cameras
-                                  # during the first iteration
+        self.camera_reset = False  # this will control re-setting all cameras
+        # during the first iteration
 
         # Create callback function for updating
-        timerId = self.iren.CreateRepeatingTimer(10) # 10ms
+        timerId = self.iren.CreateRepeatingTimer(10)  # 10ms
         self.iren.AddObserver('TimerEvent',
-            self.update
-        )
+                              self.update
+                              )
 
         # Program start
         self.iren.Start()
@@ -183,7 +166,7 @@ class RealsenseViewer:
         self.vtk_static_depth = vtk.vtkDoubleArray()
         self.vtk_static_depth.SetName('DepthArray')
 
-        # Setting all values to 0
+        # Setting all depth values to 0
         for i in range(IMG_H):
             for j in range(IMG_W):
                 if i % 3 or j % 3:
@@ -198,6 +181,7 @@ class RealsenseViewer:
         self.vtk_static_points.Modified()
         self.vtk_static_depth.Modified()
 
+        # Start the visualization pipeline
         self.vtk_imData = vtk.vtkPolyData()
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetScalarVisibility(1)
@@ -205,12 +189,11 @@ class RealsenseViewer:
 
         self.image_actor = vtk.vtkActor()
         self.image_actor.SetMapper(mapper)
-        
+
         self.image_renderer = vtk.vtkRenderer()
         self.image_renderer.SetBackground(0, 0, 0)
         self.image_renderer.AddActor(self.image_actor)
         self.image_renderer.ResetCamera()
-        #self.image_renderer.GetActiveCamera().Zoom(2)
 
         self.renderWindow.AddRenderer(self.image_renderer)
 
@@ -322,7 +305,6 @@ class RealsenseViewer:
         """
         pointId = self.vtkPoints.InsertNextPoint(
             [640 - point[1], 480 - point[0], 0 - point[2]]
-            # [point[0], point[1], point[2]]
         )
         self.vtkDepth.InsertNextValue(point[2])
         self.vtkCells.InsertNextCell(1)
@@ -337,70 +319,64 @@ class RealsenseViewer:
         Add one rgb pixel to the color data containers (note that here the
         data is in BGR format)
         """
-        # i = point[0]
-        # j = point[1]
         bgr = point[2]
         if self.mode_register or self.mode_color:
             self.vtk_ColorData.InsertNextTuple3(bgr[2], bgr[1], bgr[0])
-    def snapshot(self,renWin):
+
+    def snapshot(self, renWin):
+        """
+        Allows user to take a snapshot of the current view
+        """
         w2if = vtk.vtkWindowToImageFilter()
         w2if.SetInput(renWin)
         w2if.SetScale(1)
         w2if.ReadFrontBufferOff()
         w2if.Update()
-       
-       
+
+        # Save snapshot locally
         writer = vtk.vtkJPEGWriter()
-        filename= strftime("%Y-%m-%d_%H-%M-%S", gmtime())+".jpg"
+        filename = strftime("%Y-%m-%d_%H-%M-%S", gmtime()) + ".jpg"
         writer.SetFileName(filename)
         writer.SetInputConnection(w2if.GetOutputPort())
         writer.Write()
-    def roll(self,ren,renWin):
-        temp_cam=ren.GetActiveCamera()
-        #temp_cam.SetObliqueAngles(30,60)
-       # temp_cam.Roll(30)
+
+    def roll(self, ren, renWin):
+        """
+        Allows the user to rotate the camera around the direction of projection
+        """
+        temp_cam = ren.GetActiveCamera()
         temp_cam.Roll(10)
         ren.SetActiveCamera(temp_cam)
         renWin.Render()
-    def azimuth(self,ren,renWin):
-        temp_cam=ren.GetActiveCamera()
-        #temp_cam.SetObliqueAngles(30,60)
-       # temp_cam.Roll(30)
+
+    def azimuth(self, ren, renWin):
+        """
+        Allows the user to rotate the camera about the view up vector, which is centered at the focal point
+        """
+        temp_cam = ren.GetActiveCamera()
         temp_cam.Azimuth(5)
         ren.SetActiveCamera(temp_cam)
         renWin.Render()
-    def pitch(self,ren,renWin):
-        temp_cam=ren.GetActiveCamera()
-        #temp_cam.SetObliqueAngles(30,60)
-       # temp_cam.Roll(30)
+
+    def pitch(self, ren, renWin):
+        """
+        Allows the user to rotate the focal point about the cross product of the view up vector and the direction of
+        projection
+        """
+        temp_cam = ren.GetActiveCamera()
         temp_cam.Pitch(1)
         ren.SetActiveCamera(temp_cam)
         renWin.Render()
-    def reset(self,ren,renWin,actor):
-        #actor.GetProperty().SetPosition(0,0,0)
-        #actor.SetPosition(0,0,0)
-        #actor.SetOrientation(0,0,0)
 
-        #source.SetCenter(0, 0, 0)
-        #temp_cam=ren.GetActiveCamera()
-        #print(temp_cam)
-        #temp_cam.SetViewUp(0,1,0)
-        #temp_cam.SetObliqueAngles(45,90)
-        #ren.SetActiveCamera(temp_cam)
-        #ren.ResetCamera()
-        #print(ren.GetActiveCamera())
-        ren.GetActiveCamera().SetObliqueAngles(45,90)
-        #ren.GetActiveCamera().Roll(30)
-        #ren.GetActiveCamera().Zoom(1.5)
-        #ren.GetActiveCamera().SetPosition(0
-        ren.GetActiveCamera().SetViewUp(0,1,0)
+    def reset(self, ren, renWin, actor):
+        """
+        Allows the user to reset the current view
+        """
+        ren.GetActiveCamera().SetObliqueAngles(45, 90)
+        ren.GetActiveCamera().SetViewUp(0, 1, 0)
         ren.GetActiveCamera().SetRoll(0)
-
         ren.ResetCamera()
         ren.GetActiveCamera().Zoom(2)
-        #ren.AddActor(actor)
-   
-        
         renWin.Render()
 
     def update(self, obj=None, event=None):
@@ -410,7 +386,7 @@ class RealsenseViewer:
         """
         frame = self.pipeline.wait_for_frames()
         self.clearPoints()
-        self.renderWindow.SetSize(600,500)
+        self.renderWindow.SetSize(600, 500)
         # Get a RGB color frame
         if self.mode_color or self.mode_register:
             color_frame = frame.get_color_frame()
@@ -440,7 +416,7 @@ class RealsenseViewer:
                     # Cut-off the value into the range of [0, MAX_DIST], and
                     # then normalize to [0, DIST_NORMALIZE]
                     dist = min(MAX_DIST, depth_image[i, j]) / MAX_DIST * \
-                            DIST_NORMALIZE
+                           DIST_NORMALIZE
                     self.addDepthPoint([i, j, dist])
 
         # Indicate the corresponding data container are updated, but I don't
@@ -469,6 +445,5 @@ class RealsenseViewer:
 
         self.iren.Render()
 
+
 viewer = RealsenseViewer({'color', 'depth', 'register'})
-# viewer = RealsenseViewer({'depth', 'register'})
-# viewer = RealsenseViewer({'depth'})
